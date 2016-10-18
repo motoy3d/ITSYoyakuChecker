@@ -5,8 +5,11 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.ResourceBundle;
 
 import org.apache.commons.lang.ArrayUtils;
 import org.jsoup.Jsoup;
@@ -24,30 +27,45 @@ import com.amazonaws.services.simpleemail.model.Content;
 import com.amazonaws.services.simpleemail.model.Destination;
 import com.amazonaws.services.simpleemail.model.Message;
 import com.amazonaws.services.simpleemail.model.SendEmailRequest;
+import com.amazonaws.services.sns.AmazonSNSClient;
+import com.amazonaws.services.sns.model.MessageAttributeValue;
+import com.amazonaws.services.sns.model.PublishRequest;
+import com.amazonaws.services.sns.model.PublishResult;
 
 /**
- * ITSの保養施設の空き状況をWEBサイトから取得して金曜～日曜の空き状況をメール送信する。
+ * ITSの保養施設の空き状況をWEBサイトから取得して金曜～日曜の空き状況をSMS送信する。
  * TODO 祝日対応 http://calendar-service.net/api.php
  *
  * @author nob
  *
  */
 public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
-	private static final Regions AWS_REGION_US_WEST_2 = Regions.US_WEST_2;
 	private static final String YOYAKU_URL_TOP = "https://as.its-kenpo.or.jp";
 	private static final String[] TARGET_HOYO_SHISETSU = new String[] {
 			"トスラブ箱根ビオーレ", "トスラブ箱根和奏林", "トスラブ館山ルアーナ" };
 	private static final int[] TARGET_DAYS = new int[] {
-			Calendar.SATURDAY /*, Calendar.SUNDAY, Calendar.FRIDAY*/};
+			Calendar.SATURDAY,
+			Calendar.SUNDAY,
+			Calendar.FRIDAY
+			};
+	private static final String ITS_TEL = "003768-03-5925-5348";
+	private static final String HOKENSHO_INFO = "1196-35";
+	// SMS送信用設定
+	private static final String SMS_MAX_PRICE = "1.00";	//SMS送信料金の最大金額。これに達するとSMSが送信されなくなる。
+	private static final String[] SMS_TARGET_PHONE_NUMBERS = new String[] {
+			ResourceBundle.getBundle("app").getString("sms.target.0")
+			,ResourceBundle.getBundle("app").getString("sms.target.1")
+			};
+
+	// メール送信用設定
+	private static final Regions SES_REGION = Regions.US_WEST_2;
 	private static final String FROM = "motoy3d@gmail.com";
 	private static final String[] TO = new String[] {"motoy3d@gmail.com", "abichan0606@gmail.com"};
 	private static final String SUBJECT = "ITS健保施設予約チェック";
-	private static final String ITS_TEL = "003768-03-5925-5348";
 
 	@Override
 	public Object handleRequest(Object input, Context context) {
-		context.getLogger().log("Input: " + input);
-
+//		context.getLogger().log("Input: " + input);
 		try {
 			Document doc = Jsoup.connect(YOYAKU_URL_TOP).maxBodySize(0).timeout(60 * 1000).get();
 			Elements elements = doc.select("dl.service_category > dt > a");
@@ -90,7 +108,9 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 			}
 			// System.out.println("----------------------------");
 			if (!"".equals(content)) {
+				content += "\n" + ITS_TEL + "\n" + HOKENSHO_INFO;
 				sendMail(content);
+//				sendSMS(content);
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -117,7 +137,7 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 		Element datePulldown = elements.get(0);
 		Elements dateOptions = datePulldown.select("option");
 		SimpleDateFormat df = new SimpleDateFormat("yyyy年MM月dd日");
-		SimpleDateFormat df2 = new SimpleDateFormat("yyyy年MM月dd日(E)");
+		SimpleDateFormat df2 = new SimpleDateFormat("M月d日(E)");
 		String content = "";
 		for (Element opt : dateOptions) {
 			String date = opt.text();
@@ -126,7 +146,7 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 				cal.setTime(df.parse(date));
 				int day = cal.get(Calendar.DAY_OF_WEEK);
 				if (ArrayUtils.contains(TARGET_DAYS, day)) {
-					content += shisetsuMei + " " + df2.format(cal.getTime()) + " " + shisetsuMonthUrl + "\n";
+					content += shisetsuMei.replace("トスラブ", "") + " " + df2.format(cal.getTime()) + " " + shisetsuMonthUrl + "\n";
 					System.out.println(content);
 				}
 			}
@@ -134,8 +154,31 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 		if ("".equals(content)) {
 			return "";
 		}
-		content += "\n" + ITS_TEL + "\n";
 		return content;
+	}
+
+	/**
+	 * SNSでSMS送信
+	 *
+	 * @param message
+	 */
+	private static void sendSMS(String message) {
+		AmazonSNSClient snsClient = new AmazonSNSClient();
+		Map<String, MessageAttributeValue> smsAttributes = new HashMap<String, MessageAttributeValue>();
+		smsAttributes.put("AWS.SNS.SMS.SenderID", new MessageAttributeValue()
+		        .withStringValue("ITSChecker") //The sender ID shown on the device.
+		        .withDataType("String"));
+		smsAttributes.put("AWS.SNS.SMS.MaxPrice", new MessageAttributeValue()
+		        .withStringValue(SMS_MAX_PRICE) //Sets the max price to 0.50 USD.
+		        .withDataType("Number"));
+		smsAttributes.put("AWS.SNS.SMS.SMSType", new MessageAttributeValue()
+		        .withStringValue("Promotional") //Sets the type to promotional.
+		        .withDataType("String"));
+		for (String phoneNumber : SMS_TARGET_PHONE_NUMBERS) {
+			PublishResult result = snsClient.publish(new PublishRequest().withMessage(message).withPhoneNumber(phoneNumber)
+					.withMessageAttributes(smsAttributes));
+			System.out.println("SMS送信結果(" + phoneNumber + ") " + result); // Prints the message ID.
+		}
 	}
 
 	/**
@@ -164,7 +207,7 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 
 			AmazonSimpleEmailServiceClient client = new AmazonSimpleEmailServiceClient();
 
-			Region REGION = Region.getRegion(AWS_REGION_US_WEST_2);
+			Region REGION = Region.getRegion(SES_REGION);
 			client.setRegion(REGION);
 
 			// Send the email.
@@ -176,4 +219,8 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 		}
 	}
 
+//	public static void main(String[] args) {
+//		LambdaFunctionHandler handler = new LambdaFunctionHandler();
+//		handler.handleRequest(null, null);
+//	}
 }
