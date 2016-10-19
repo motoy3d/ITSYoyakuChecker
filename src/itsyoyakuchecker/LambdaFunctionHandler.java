@@ -53,6 +53,7 @@ import com.amazonaws.services.sns.model.PublishResult;
  *
  */
 public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
+	private static ResourceBundle prop = ResourceBundle.getBundle("app");
 	private static final String YOYAKU_URL_TOP = "https://as.its-kenpo.or.jp";
 	private static final String[] TARGET_HOYO_SHISETSU = new String[] {
 			"トスラブ箱根ビオーレ", "トスラブ箱根和奏林", "トスラブ館山ルアーナ" };
@@ -62,18 +63,18 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 			Calendar.FRIDAY
 			};
 	private static final String ITS_TEL = "003768-03-5925-5348";
-	private static final String HOKENSHO_INFO = "1196-35";
+	private static final String HOKENSHO_INFO = prop.getString("hokensho.info");
 	// SMS送信用設定
-	private static final String SMS_MAX_PRICE = "1.00";	//SMS送信料金の最大金額($USD)。これに達するとSMSが送信されなくなる。
+	private static final String SMS_MAX_PRICE = "5.00";	//SMS送信料金の最大金額($USD)。これに達するとSMSが送信されなくなる。
 	private static final String[] SMS_TARGET_PHONE_NUMBERS = new String[] {
-			ResourceBundle.getBundle("app").getString("sms.target.0")
-			,ResourceBundle.getBundle("app").getString("sms.target.1")
+			prop.getString("sms.target.0")
+			,prop.getString("sms.target.1")
 			};
 
 	// メール送信用設定
 	private static final Regions SES_REGION = Regions.US_WEST_2;
-	private static final String FROM = "motoy3d@gmail.com";
-	private static final String[] TO = new String[] {"motoy3d@gmail.com", "abichan0606@gmail.com"};
+	private static final String FROM = prop.getString("mail.from");
+	private static final String[] TO = new String[] {prop.getString("mail.to.0"), prop.getString("mail.to.1")};
 	private static final String SUBJECT = "ITS健保施設予約チェック";
 
 	private static Region DYNAMODB_REGION = Region.getRegion(Regions.AP_NORTHEAST_1);
