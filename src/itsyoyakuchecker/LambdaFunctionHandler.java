@@ -65,6 +65,7 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 	private static final String ITS_TEL = "003768-03-5925-5348";
 	private static final String HOKENSHO_INFO = prop.getString("hokensho.info");
 	// SMS送信用設定
+	private static final Region SNS_REGION = Region.getRegion(Regions.AP_NORTHEAST_1);	//東京
 	private static final String SMS_MAX_PRICE = "5.00";	//SMS送信料金の最大金額($USD)。これに達するとSMSが送信されなくなる。
 	private static final String[] SMS_TARGET_PHONE_NUMBERS = new String[] {
 			prop.getString("sms.target.0")
@@ -72,7 +73,7 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 			};
 
 	// メール送信用設定
-	private static final Regions SES_REGION = Regions.US_WEST_2;
+	private static final Regions SES_REGION = Regions.US_WEST_2;	//オレゴン
 	private static final String FROM = prop.getString("mail.from");
 	private static final String[] TO = new String[] {prop.getString("mail.to.0"), prop.getString("mail.to.1")};
 	private static final String SUBJECT = "ITS健保施設予約チェック";
@@ -135,7 +136,8 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 					content += "\n" + ITS_TEL + "\n" + HOKENSHO_INFO;
 				}
 				sendMail(content);
-				sendSMS(content);
+				//TODO SMS_MAX_PRICEで定義した金額を超えて課金された上にSMSが届かない現象があるため、送信しないようにする
+//				sendSMS(content);
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -220,6 +222,7 @@ public class LambdaFunctionHandler implements RequestHandler<Object, Object> {
 	 */
 	private static void sendSMS(String message) {
 		AmazonSNSClient snsClient = new AmazonSNSClient();
+		snsClient.setRegion(SNS_REGION);
 		Map<String, MessageAttributeValue> smsAttributes = new HashMap<String, MessageAttributeValue>();
 		smsAttributes.put("AWS.SNS.SMS.SenderID", new MessageAttributeValue()
 		        .withStringValue("ITSChecker") //The sender ID shown on the device.
